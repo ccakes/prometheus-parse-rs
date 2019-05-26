@@ -3,6 +3,11 @@
 Simple but effective Rust parser for the Prometheus scrape format.
 
 ```rust
+let body = reqwest::get("https://prometheus.example.com/metrics")?
+    .text()?;
+let lines: Vec<_> = body.lines().map(|s| Ok(s.to_owned)).collect();
+
+let metrics = prometheus_parse::Scrape::parse(lines.into_iter())?;
 ```
 
 ### Attribution
