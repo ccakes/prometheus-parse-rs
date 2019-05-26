@@ -1,6 +1,6 @@
 [package]
 name = "prometheus-parse"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Cameron Daniel <cam.daniel@gmail.com>"]
 edition = "2018"
 

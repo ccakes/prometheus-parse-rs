@@ -4,6 +4,7 @@ use regex::Regex;
 
 use std::collections::HashMap;
 use std::io;
+use std::ops::Deref;
 
 lazy_static! {
     static ref HELP_RE: Regex = Regex::new(r"^#\s+HELP\s+(\w+)\s+(.+)$").unwrap();
@@ -115,10 +116,10 @@ impl<'a> LineInfo<'a> {
 
 #[derive(Debug, PartialEq)]
 pub struct Sample {
-    metric: String,
-    value: Value,
-    labels: Labels,
-    timestamp: DateTime<Utc>,
+    pub metric: String,
+    pub value: Value,
+    pub labels: Labels,
+    pub timestamp: DateTime<Utc>,
 }
 
 fn parse_bucket(s: &str, label: &str) -> Option<f64> {
@@ -174,6 +175,12 @@ impl Labels {
     pub fn get(&self, name: &str) -> Option<&str> {
         self.0.get(name).map(|ref x| x.as_str())
     }
+}
+
+impl Deref for Labels {
+    type Target = HashMap<String, String>;
+
+    fn deref(&self) -> &Self::Target { &self.0 }
 }
 
 #[derive(Debug, PartialEq)]
