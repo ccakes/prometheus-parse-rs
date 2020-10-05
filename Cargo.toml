@@ -1,11 +1,11 @@
 [package]
 name = "prometheus-parse"
 description = "A simple parser for the Prometheus text format"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Cameron Daniel <cam.daniel@gmail.com>"]
 edition = "2018"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 keywords = ["prometheus", "parser"]
 repository = "https://github.com/ccakes/prometheus-parse-rs"
 homepage = "https://github.com/ccakes/prometheus-parse-rs"
