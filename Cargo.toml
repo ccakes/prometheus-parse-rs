@@ -1,10 +1,16 @@
 [package]
 name = "prometheus-parse"
-version = "0.1.1"
+description = "A simple parser for the Prometheus text format"
+version = "0.2.0"
 authors = ["Cameron Daniel <cam.daniel@gmail.com>"]
 edition = "2018"
+readme = "README.md"
+license = "MIT"
+keywords = ["prometheus", "parser"]
+repository = "https://github.com/ccakes/prometheus-parse-rs"
+homepage = "https://github.com/ccakes/prometheus-parse-rs"
 
 [dependencies]
-chrono = "0.4"
-lazy_static = "1.3"
-regex = "1"
+chrono = "^0.4"
+lazy_static = "^1.4"
+regex = "^1.3"

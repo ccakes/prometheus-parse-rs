@@ -1,0 +1,9 @@
+Revision history for prometheus-parse
+
+- v0.2.0
+    - Bump dependency versions
+    - Release to crates.io
+
+- v0.1.1
+    - Expose some struct fields as public
+    - Initial adaption from prometheus-scrape
