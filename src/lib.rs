@@ -141,18 +141,18 @@ fn parse_bucket(s: &str, label: &str) -> Option<f64> {
 
 #[derive(Debug, PartialEq)]
 pub struct HistogramCount {
-    less_than: f64,
-    count: f64,
+    pub less_than: f64,
+    pub count: f64,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct SummaryCount {
-    quantile: f64,
-    count: f64,
+    pub quantile: f64,
+    pub count: f64,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Labels(HashMap<String, String>);
+pub struct Labels(pub HashMap<String, String>);
 
 impl Labels {
     fn new() -> Labels {
