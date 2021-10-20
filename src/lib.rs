@@ -152,7 +152,7 @@ pub struct SummaryCount {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Labels(pub HashMap<String, String>);
+pub struct Labels(HashMap<String, String>);
 
 impl Labels {
     fn new() -> Labels {
