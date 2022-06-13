@@ -59,7 +59,7 @@ impl SampleType {
 impl<'a> LineInfo<'a> {
     pub fn parse(line: &'a str) -> LineInfo<'a> {
         let line = line.trim();
-        if line.len() == 0 {
+        if line.is_empty() {
             return LineInfo::Empty;
         }
         match HELP_RE.captures(line) {
@@ -84,7 +84,7 @@ impl<'a> LineInfo<'a> {
                                 SampleType::Histogram => format!("{}_bucket", metric_name.as_str()),
                                 _ => metric_name.as_str().to_string(),
                             },
-                            sample_type: sample_type,
+                            sample_type,
                         }
                     }
                     _ => LineInfo::Ignored,
@@ -102,9 +102,9 @@ impl<'a> LineInfo<'a> {
                 ) {
                     (Some(ref name), labels, Some(ref value), timestamp) => LineInfo::Sample {
                         metric_name: name.as_str(),
-                        labels: labels.map_or(None, |c| Some(c.as_str())),
+                        labels: labels.map(|c| c.as_str()),
                         value: value.as_str(),
-                        timestamp: timestamp.map_or(None, |c| Some(c.as_str())),
+                        timestamp: timestamp.map(|c| c.as_str()),
                     },
                     _ => LineInfo::Ignored,
                 }
@@ -123,8 +123,8 @@ pub struct Sample {
 }
 
 fn parse_bucket(s: &str, label: &str) -> Option<f64> {
-    if let Some(kv) = s.split(",").next() {
-        let kvpair = kv.split("=").collect::<Vec<_>>();
+    if let Some(kv) = s.split(',').next() {
+        let kvpair = kv.split('=').collect::<Vec<_>>();
         let (k, v) = (kvpair[0], kvpair[1].trim_matches('"'));
         if k == label {
             match parse_golang_float(v) {
@@ -160,9 +160,9 @@ impl Labels {
     }
     fn parse(s: &str) -> Labels {
         let mut l = HashMap::new();
-        for kv in s.split(",") {
-            let kvpair = kv.split("=").collect::<Vec<_>>();
-            if kvpair.len() != 2 || kvpair[0].len() == 0 {
+        for kv in s.split(',') {
+            let kvpair = kv.split('=').collect::<Vec<_>>();
+            if kvpair.len() != 2 || kvpair[0].is_empty() {
                 continue;
             }
             l.insert(
@@ -173,7 +173,7 @@ impl Labels {
         Labels(l)
     }
     pub fn get(&self, name: &str) -> Option<&str> {
-        self.0.get(name).map(|ref x| x.as_str())
+        self.0.get(name).map(|x| x.as_str())
     }
 }
 
@@ -196,15 +196,13 @@ pub enum Value {
 
 impl Value {
     fn push_histogram(&mut self, h: HistogramCount) {
-        match self {
-            &mut Value::Histogram(ref mut hs) => hs.push(h),
-            _ => {}
+        if let &mut Value::Histogram(ref mut hs) = self {
+            hs.push(h)
         }
     }
     fn push_summary(&mut self, s: SummaryCount) {
-        match self {
-            &mut Value::Summary(ref mut ss) => ss.push(s),
-            _ => {}
+        if let &mut Value::Summary(ref mut ss) = self {
+            ss.push(s)
         }
     }
 }
@@ -218,7 +216,7 @@ pub struct Scrape {
 fn parse_golang_float(s: &str) -> Result<f64, <f64 as std::str::FromStr>::Err> {
     match s.to_lowercase().as_str() {
         "nan" => Ok(std::f64::NAN), // f64::parse doesn't recognize 'nan'
-        ref s => s.parse::<f64>(),  // f64::parse expects lowercase [+-]inf
+        s => s.parse::<f64>(),      // f64::parse expects lowercase [+-]inf
     }
 }
 
@@ -280,7 +278,7 @@ impl Scrape {
                                         metric: metric_name.to_string(),
                                         labels: Labels::new(),
                                         value: Value::Histogram(vec![]),
-                                        timestamp: timestamp,
+                                        timestamp,
                                     });
                                 sample.value.push_histogram(HistogramCount {
                                     less_than: lt,
@@ -295,7 +293,7 @@ impl Scrape {
                                         metric: metric_name.to_string(),
                                         labels: Labels::new(),
                                         value: Value::Summary(vec![]),
-                                        timestamp: timestamp,
+                                        timestamp,
                                     });
                                 sample.value.push_summary(SummaryCount {
                                     quantile: q,
@@ -305,13 +303,13 @@ impl Scrape {
                         }
                         (ty, labels) => samples.push(Sample {
                             metric: metric_name.to_string(),
-                            labels: labels.map_or(Labels::new(), |x| Labels::parse(x)),
+                            labels: labels.map_or(Labels::new(), Labels::parse),
                             value: match ty {
                                 Some(SampleType::Counter) => Value::Counter(fvalue),
                                 Some(SampleType::Gauge) => Value::Gauge(fvalue),
                                 _ => Value::Untyped(fvalue),
                             },
-                            timestamp: timestamp,
+                            timestamp,
                         }),
                     };
                 }
@@ -319,10 +317,7 @@ impl Scrape {
             }
         }
         samples.extend(buckets.drain().map(|(_k, v)| v).collect::<Vec<_>>());
-        Ok(Scrape {
-            docs: docs,
-            samples: samples,
-        })
+        Ok(Scrape { docs, samples })
     }
 }
 
