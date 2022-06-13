@@ -180,7 +180,9 @@ impl Labels {
 impl Deref for Labels {
     type Target = HashMap<String, String>;
 
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -532,4 +534,3 @@ rpc_duration_seconds_count 2693
         );
     }
 }
-
