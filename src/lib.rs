@@ -1,8 +1,9 @@
 use chrono::{DateTime, TimeZone, Utc};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::ops::Deref;
 
@@ -23,6 +24,7 @@ pub enum LineInfo<'a> {
     },
     Type {
         metric_name: String,
+        metric_alias: Option<String>,
         sample_type: SampleType,
     },
     Sample {
@@ -59,7 +61,7 @@ impl SampleType {
 impl<'a> LineInfo<'a> {
     pub fn parse(line: &'a str) -> LineInfo<'a> {
         let line = line.trim();
-        if line.len() == 0 {
+        if line.is_empty() {
             return LineInfo::Empty;
         }
         match HELP_RE.captures(line) {
@@ -84,7 +86,11 @@ impl<'a> LineInfo<'a> {
                                 SampleType::Histogram => format!("{}_bucket", metric_name.as_str()),
                                 _ => metric_name.as_str().to_string(),
                             },
-                            sample_type: sample_type,
+                            metric_alias: match sample_type {
+                                SampleType::Histogram => Some(metric_name.as_str().to_string()),
+                                _ => None,
+                            },
+                            sample_type,
                         }
                     }
                     _ => LineInfo::Ignored,
@@ -102,9 +108,9 @@ impl<'a> LineInfo<'a> {
                 ) {
                     (Some(ref name), labels, Some(ref value), timestamp) => LineInfo::Sample {
                         metric_name: name.as_str(),
-                        labels: labels.map_or(None, |c| Some(c.as_str())),
+                        labels: labels.map(|c| c.as_str()),
                         value: value.as_str(),
-                        timestamp: timestamp.map_or(None, |c| Some(c.as_str())),
+                        timestamp: timestamp.map(|c| c.as_str()),
                     },
                     _ => LineInfo::Ignored,
                 }
@@ -122,21 +128,27 @@ pub struct Sample {
     pub timestamp: DateTime<Utc>,
 }
 
-fn parse_bucket(s: &str, label: &str) -> Option<f64> {
-    if let Some(kv) = s.split(",").next() {
-        let kvpair = kv.split("=").collect::<Vec<_>>();
+fn parse_bucket(s: &str, label: &str) -> Option<(Labels, f64)> {
+    let mut labs = HashMap::new();
+
+    let mut value = None;
+    for kv in s.split(',') {
+        let kvpair = kv.split('=').collect::<Vec<_>>();
+        if kvpair.len() != 2 || kvpair[0].is_empty() {
+            continue;
+        }
         let (k, v) = (kvpair[0], kvpair[1].trim_matches('"'));
         if k == label {
-            match parse_golang_float(v) {
+            value = match parse_golang_float(v) {
                 Ok(v) => Some(v),
-                Err(_) => None,
-            }
+                Err(_) => return None,
+            };
         } else {
-            None
+            labs.insert(k.to_string(), v.to_string());
         }
-    } else {
-        None
     }
+
+    value.map(|v| (Labels(labs), v))
 }
 
 #[derive(Debug, PartialEq)]
@@ -160,9 +172,9 @@ impl Labels {
     }
     fn parse(s: &str) -> Labels {
         let mut l = HashMap::new();
-        for kv in s.split(",") {
-            let kvpair = kv.split("=").collect::<Vec<_>>();
-            if kvpair.len() != 2 || kvpair[0].len() == 0 {
+        for kv in s.split(',') {
+            let kvpair = kv.split('=').collect::<Vec<_>>();
+            if kvpair.len() != 2 || kvpair[0].is_empty() {
                 continue;
             }
             l.insert(
@@ -173,14 +185,33 @@ impl Labels {
         Labels(l)
     }
     pub fn get(&self, name: &str) -> Option<&str> {
-        self.0.get(name).map(|ref x| x.as_str())
+        self.0.get(name).map(|x| x.as_str())
     }
 }
 
 impl Deref for Labels {
     type Target = HashMap<String, String>;
 
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl core::fmt::Display for Labels {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            Itertools::intersperse(
+                self.iter()
+                    .collect::<BTreeMap<_, _>>()
+                    .into_iter()
+                    .map(|(k, v)| format!(r#"{}="{}"#, k, v)),
+                ",".to_string()
+            )
+            .collect::<String>()
+        )
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -194,15 +225,13 @@ pub enum Value {
 
 impl Value {
     fn push_histogram(&mut self, h: HistogramCount) {
-        match self {
-            &mut Value::Histogram(ref mut hs) => hs.push(h),
-            _ => {}
+        if let &mut Value::Histogram(ref mut hs) = self {
+            hs.push(h)
         }
     }
     fn push_summary(&mut self, s: SummaryCount) {
-        match self {
-            &mut Value::Summary(ref mut ss) => ss.push(s),
-            _ => {}
+        if let &mut Value::Summary(ref mut ss) = self {
+            ss.push(s)
         }
     }
 }
@@ -216,7 +245,7 @@ pub struct Scrape {
 fn parse_golang_float(s: &str) -> Result<f64, <f64 as std::str::FromStr>::Err> {
     match s.to_lowercase().as_str() {
         "nan" => Ok(std::f64::NAN), // f64::parse doesn't recognize 'nan'
-        ref s => s.parse::<f64>(),  // f64::parse expects lowercase [+-]inf
+        s => s.parse::<f64>(),      // f64::parse expects lowercase [+-]inf
     }
 }
 
@@ -230,7 +259,8 @@ impl Scrape {
     ) -> io::Result<Scrape> {
         let mut docs: HashMap<String, String> = HashMap::new();
         let mut types: HashMap<String, SampleType> = HashMap::new();
-        let mut buckets: HashMap<String, Sample> = HashMap::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let mut buckets: HashMap<(String, String), Sample> = HashMap::new();
         let mut samples: Vec<Sample> = vec![];
 
         for read_line in lines {
@@ -247,9 +277,13 @@ impl Scrape {
                 }
                 LineInfo::Type {
                     ref metric_name,
+                    ref metric_alias,
                     ref sample_type,
                 } => {
                     types.insert(metric_name.to_string(), *sample_type);
+                    if let Some(alias) = metric_alias.as_ref() {
+                        aliases.insert(metric_name.to_string(), alias.to_string());
+                    }
                 }
                 LineInfo::Sample {
                     metric_name,
@@ -272,13 +306,17 @@ impl Scrape {
                     };
                     match (types.get(metric_name), labels) {
                         (Some(SampleType::Histogram), Some(labels)) => {
-                            if let Some(lt) = parse_bucket(labels, "le") {
-                                let sample =
-                                    buckets.entry(metric_name.to_string()).or_insert(Sample {
-                                        metric: metric_name.to_string(),
-                                        labels: Labels::new(),
+                            if let Some((labels, lt)) = parse_bucket(labels, "le") {
+                                let sample = buckets
+                                    .entry((metric_name.to_string(), labels.to_string()))
+                                    .or_insert(Sample {
+                                        metric: aliases
+                                            .get(metric_name)
+                                            .map(ToString::to_string)
+                                            .unwrap_or_else(|| metric_name.to_string()),
+                                        labels,
                                         value: Value::Histogram(vec![]),
-                                        timestamp: timestamp,
+                                        timestamp,
                                     });
                                 sample.value.push_histogram(HistogramCount {
                                     less_than: lt,
@@ -287,13 +325,14 @@ impl Scrape {
                             }
                         }
                         (Some(SampleType::Summary), Some(labels)) => {
-                            if let Some(q) = parse_bucket(labels, "quantile") {
-                                let sample =
-                                    buckets.entry(metric_name.to_string()).or_insert(Sample {
+                            if let Some((labels, q)) = parse_bucket(labels, "quantile") {
+                                let sample = buckets
+                                    .entry((metric_name.to_string(), labels.to_string()))
+                                    .or_insert(Sample {
                                         metric: metric_name.to_string(),
-                                        labels: Labels::new(),
+                                        labels,
                                         value: Value::Summary(vec![]),
-                                        timestamp: timestamp,
+                                        timestamp,
                                     });
                                 sample.value.push_summary(SummaryCount {
                                     quantile: q,
@@ -303,13 +342,13 @@ impl Scrape {
                         }
                         (ty, labels) => samples.push(Sample {
                             metric: metric_name.to_string(),
-                            labels: labels.map_or(Labels::new(), |x| Labels::parse(x)),
+                            labels: labels.map_or(Labels::new(), Labels::parse),
                             value: match ty {
                                 Some(SampleType::Counter) => Value::Counter(fvalue),
                                 Some(SampleType::Gauge) => Value::Gauge(fvalue),
                                 _ => Value::Untyped(fvalue),
                             },
-                            timestamp: timestamp,
+                            timestamp,
                         }),
                     };
                 }
@@ -317,10 +356,7 @@ impl Scrape {
             }
         }
         samples.extend(buckets.drain().map(|(_k, v)| v).collect::<Vec<_>>());
-        Ok(Scrape {
-            docs: docs,
-            samples: samples,
-        })
+        Ok(Scrape { docs, samples })
     }
 }
 
@@ -388,6 +424,7 @@ mod tests {
             LineInfo::parse("# TYPE foobar bazquux"),
             LineInfo::Type {
                 metric_name: "foobar".to_string(),
+                metric_alias: None,
                 sample_type: SampleType::Untyped,
             },
         );
@@ -531,5 +568,118 @@ rpc_duration_seconds_count 2693
             }
         );
     }
-}
 
+    #[test]
+    fn test_parse_complex_formats_with_labels() {
+        let scrape = r#"
+# A histogram, which has a pretty complex representation in the text format:
+# HELP http_request_duration_seconds A histogram of the request duration.
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{service="main",code="200",le="0.05"} 24054 1395066363000
+http_request_duration_seconds_bucket{code="200",le="0.1",service="main"} 33444 1395066363000
+http_request_duration_seconds_bucket{code="200",service="main",le="0.2"} 100392 1395066363000
+http_request_duration_seconds_bucket{le="0.5",code="200",service="main"} 129389 1395066363000
+http_request_duration_seconds_bucket{service="main",le="1",code="200"} 133988 1395066363000
+http_request_duration_seconds_bucket{le="+Inf",service="main",code="200"} 144320 1395066363000
+http_request_duration_seconds_sum{service="main",code="200"} 53423 1395066363000
+http_request_duration_seconds_count{service="main",code="200"} 144320 1395066363000
+
+# Finally a summary, which has a complex representation, too:
+# HELP rpc_duration_seconds A summary of the RPC duration in seconds.
+# TYPE rpc_duration_seconds summary
+rpc_duration_seconds{service="backup",code="400",quantile="0.01"} 3102 1395066363000
+rpc_duration_seconds{code="400",service="backup",quantile="0.05"} 3272 1395066363000
+rpc_duration_seconds{code="400",quantile="0.5",service="backup"} 4773 1395066363000
+rpc_duration_seconds{service="backup",quantile="0.9",code="400"} 9001 1395066363000
+rpc_duration_seconds{quantile="0.99",service="backup",code="400"} 76656 1395066363000
+rpc_duration_seconds_sum{service="backup",code="400"} 1.7560473e+07 1395066363000
+rpc_duration_seconds_count{service="backup",code="400"} 2693 1395066363000
+"#;
+        let br = io::BufReader::new(scrape.as_bytes());
+        let s = Scrape::parse(br.lines()).unwrap();
+        assert_eq!(s.samples.len(), 6);
+
+        fn assert_match_sample<'a, F>(samples: &'a Vec<Sample>, f: F) -> &'a Sample
+        where
+            for<'r> F: FnMut(&'r &'a Sample) -> bool,
+        {
+            samples.iter().filter(f).next().as_ref().unwrap()
+        }
+        assert_eq!(
+            assert_match_sample(&s.samples, |s| s.metric == "http_request_duration_seconds"
+                && s.labels.get("service") == Some("main")),
+            &Sample {
+                metric: "http_request_duration_seconds".to_string(),
+                value: Value::Histogram(vec![
+                    HistogramCount {
+                        less_than: 0.05f64,
+                        count: 24054f64,
+                    },
+                    HistogramCount {
+                        less_than: 0.1f64,
+                        count: 33444f64,
+                    },
+                    HistogramCount {
+                        less_than: 0.2f64,
+                        count: 100392f64,
+                    },
+                    HistogramCount {
+                        less_than: 0.5f64,
+                        count: 129389f64,
+                    },
+                    HistogramCount {
+                        less_than: 1.0f64,
+                        count: 133988f64,
+                    },
+                    HistogramCount {
+                        less_than: f64::INFINITY,
+                        count: 144320f64,
+                    },
+                ]),
+                labels: Labels(
+                    [("service", "main"), ("code", "200")]
+                        .iter()
+                        .map(pair_to_string)
+                        .collect()
+                ),
+                timestamp: Utc.timestamp_millis(1395066363000),
+            }
+        );
+        assert_eq!(
+            assert_match_sample(&s.samples, |s| s.metric == "rpc_duration_seconds"
+                && s.labels.get("service") == Some("backup")),
+            &Sample {
+                metric: "rpc_duration_seconds".to_string(),
+                value: Value::Summary(vec![
+                    SummaryCount {
+                        quantile: 0.01f64,
+                        count: 3102f64
+                    },
+                    SummaryCount {
+                        quantile: 0.05f64,
+                        count: 3272f64,
+                    },
+                    SummaryCount {
+                        quantile: 0.5f64,
+                        count: 4773f64,
+                    },
+                    SummaryCount {
+                        quantile: 0.9f64,
+                        count: 9001f64,
+                    },
+                    SummaryCount {
+                        quantile: 0.99f64,
+                        count: 76656f64
+                    }
+                ]),
+                labels: Labels(
+                    [("service", "backup"), ("code", "400")]
+                        .iter()
+                        .map(pair_to_string)
+                        .collect()
+                ),
+                timestamp: Utc.timestamp_millis(1395066363000),
+            }
+        );
+    }
+}

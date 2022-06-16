@@ -12,5 +12,6 @@ homepage = "https://github.com/ccakes/prometheus-parse-rs"
 
 [dependencies]
 chrono = "^0.4"
+itertools = "^0.10"
 lazy_static = "^1.4"
 regex = "^1.3"
