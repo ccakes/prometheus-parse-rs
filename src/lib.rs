@@ -3,6 +3,9 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 
+#[cfg(feature = "serde1")]
+use serde::{Serialize, Deserialize};
+
 use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::ops::Deref;
@@ -120,6 +123,7 @@ impl<'a> LineInfo<'a> {
     }
 }
 
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 #[derive(Debug, PartialEq)]
 pub struct Sample {
     pub metric: String,
@@ -151,18 +155,21 @@ fn parse_bucket(s: &str, label: &str) -> Option<(Labels, f64)> {
     value.map(|v| (Labels(labs), v))
 }
 
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 #[derive(Debug, PartialEq)]
 pub struct HistogramCount {
     pub less_than: f64,
     pub count: f64,
 }
 
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 #[derive(Debug, PartialEq)]
 pub struct SummaryCount {
     pub quantile: f64,
     pub count: f64,
 }
 
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 #[derive(Debug, Eq, PartialEq)]
 pub struct Labels(HashMap<String, String>);
 
@@ -214,6 +221,7 @@ impl core::fmt::Display for Labels {
     }
 }
 
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Counter(f64),
@@ -236,6 +244,7 @@ impl Value {
     }
 }
 
+#[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
 #[derive(Debug)]
 pub struct Scrape {
     pub docs: HashMap<String, String>,
