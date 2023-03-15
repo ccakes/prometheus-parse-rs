@@ -1,20 +1,18 @@
 use chrono::{DateTime, TimeZone, Utc};
 use itertools::Itertools;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::ops::Deref;
 
-lazy_static! {
-    static ref HELP_RE: Regex = Regex::new(r"^#\s+HELP\s+(\w+)\s+(.+)$").unwrap();
-    static ref TYPE_RE: Regex = Regex::new(r"^#\s+TYPE\s+(\w+)\s+(\w+)").unwrap();
-    static ref SAMPLE_RE: Regex = Regex::new(
-        r"^(?P<name>\w+)(\{(?P<labels>[^}]+)\})?\s+(?P<value>\S+)(\s+(?P<timestamp>\S+))?"
-    )
-    .unwrap();
-}
+static HELP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^#\s+HELP\s+(\w+)\s+(.+)$").unwrap());
+static TYPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^#\s+TYPE\s+(\w+)\s+(\w+)").unwrap());
+static SAMPLE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?P<name>\w+)(\{(?P<labels>[^}]+)\})?\s+(?P<value>\S+)(\s+(?P<timestamp>\S+))?")
+        .unwrap()
+});
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum LineInfo<'a> {
