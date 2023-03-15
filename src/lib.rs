@@ -70,7 +70,7 @@ impl<'a> LineInfo<'a> {
                         doc: doc.as_str(),
                     },
                     _ => LineInfo::Ignored,
-                }
+                };
             }
             None => {}
         }
@@ -92,7 +92,7 @@ impl<'a> LineInfo<'a> {
                         }
                     }
                     _ => LineInfo::Ignored,
-                }
+                };
             }
             None => {}
         }
@@ -111,7 +111,7 @@ impl<'a> LineInfo<'a> {
                         timestamp: timestamp.map(|c| c.as_str()),
                     },
                     _ => LineInfo::Ignored,
-                }
+                };
             }
             None => LineInfo::Ignored,
         }
@@ -168,6 +168,7 @@ impl Labels {
     fn new() -> Labels {
         Labels(HashMap::new())
     }
+
     fn parse(s: &str) -> Labels {
         let mut l = HashMap::new();
         for kv in s.split(',') {
@@ -182,6 +183,7 @@ impl Labels {
         }
         Labels(l)
     }
+
     pub fn get(&self, name: &str) -> Option<&str> {
         self.0.get(name).map(|x| x.as_str())
     }
@@ -227,6 +229,7 @@ impl Value {
             hs.push(h)
         }
     }
+
     fn push_summary(&mut self, s: SummaryCount) {
         if let &mut Value::Summary(ref mut ss) = self {
             ss.push(s)
@@ -251,6 +254,7 @@ impl Scrape {
     pub fn parse(lines: impl Iterator<Item = io::Result<String>>) -> io::Result<Scrape> {
         Scrape::parse_at(lines, Utc::now())
     }
+
     pub fn parse_at(
         lines: impl Iterator<Item = io::Result<String>>,
         sample_time: DateTime<Utc>,
@@ -360,8 +364,9 @@ impl Scrape {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::BufRead;
+
+    use super::*;
 
     #[test]
     fn test_lineinfo_parse() {
