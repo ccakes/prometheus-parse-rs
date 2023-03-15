@@ -294,9 +294,11 @@ impl Scrape {
                         continue;
                     };
                     // Parse timestamp or use given sample time
-                    let timestamp = if let Some(Ok(ts_millis)) = timestamp.map(|x| x.parse::<i64>())
+                    let timestamp = if let Some(time) = timestamp
+                        .and_then(|x| x.parse::<i64>().ok())
+                        .and_then(|ts_millis| Utc.timestamp_millis_opt(ts_millis).single())
                     {
-                        Utc.timestamp_millis_opt(ts_millis).unwrap()
+                        time
                     } else {
                         sample_time
                     };
