@@ -14,4 +14,4 @@ homepage = "https://github.com/ccakes/prometheus-parse-rs"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 itertools = { version = "0.10", default-features = false }
 once_cell = { version = "1", default-features = false, features = ["std"] }
-regex = { version = "1", default-features = false, features = ["std", "unicode-perl"] }
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
