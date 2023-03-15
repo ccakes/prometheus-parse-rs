@@ -62,39 +62,33 @@ impl<'a> LineInfo<'a> {
         if line.is_empty() {
             return LineInfo::Empty;
         }
-        match HELP_RE.captures(line) {
-            Some(ref caps) => {
-                return match (caps.get(1), caps.get(2)) {
-                    (Some(ref metric_name), Some(ref doc)) => LineInfo::Doc {
-                        metric_name: metric_name.as_str(),
-                        doc: doc.as_str(),
-                    },
-                    _ => LineInfo::Ignored,
-                };
-            }
-            None => {}
+        if let Some(ref caps) = HELP_RE.captures(line) {
+            return match (caps.get(1), caps.get(2)) {
+                (Some(ref metric_name), Some(ref doc)) => LineInfo::Doc {
+                    metric_name: metric_name.as_str(),
+                    doc: doc.as_str(),
+                },
+                _ => LineInfo::Ignored,
+            };
         }
-        match TYPE_RE.captures(line) {
-            Some(ref caps) => {
-                return match (caps.get(1), caps.get(2)) {
-                    (Some(ref metric_name), Some(ref sample_type)) => {
-                        let sample_type = SampleType::parse(sample_type.as_str());
-                        LineInfo::Type {
-                            metric_name: match sample_type {
-                                SampleType::Histogram => format!("{}_bucket", metric_name.as_str()),
-                                _ => metric_name.as_str().to_string(),
-                            },
-                            metric_alias: match sample_type {
-                                SampleType::Histogram => Some(metric_name.as_str().to_string()),
-                                _ => None,
-                            },
-                            sample_type,
-                        }
+        if let Some(ref caps) = TYPE_RE.captures(line) {
+            return match (caps.get(1), caps.get(2)) {
+                (Some(ref metric_name), Some(ref sample_type)) => {
+                    let sample_type = SampleType::parse(sample_type.as_str());
+                    LineInfo::Type {
+                        metric_name: match sample_type {
+                            SampleType::Histogram => format!("{}_bucket", metric_name.as_str()),
+                            _ => metric_name.as_str().to_string(),
+                        },
+                        metric_alias: match sample_type {
+                            SampleType::Histogram => Some(metric_name.as_str().to_string()),
+                            _ => None,
+                        },
+                        sample_type,
                     }
-                    _ => LineInfo::Ignored,
-                };
-            }
-            None => {}
+                }
+                _ => LineInfo::Ignored,
+            };
         }
         match SAMPLE_RE.captures(line) {
             Some(ref caps) => {
