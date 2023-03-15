@@ -298,7 +298,7 @@ impl Scrape {
                     // Parse timestamp or use given sample time
                     let timestamp = if let Some(Ok(ts_millis)) = timestamp.map(|x| x.parse::<i64>())
                     {
-                        Utc.timestamp_millis(ts_millis)
+                        Utc.timestamp_millis_opt(ts_millis).unwrap()
                     } else {
                         sample_time
                     };
@@ -547,7 +547,7 @@ rpc_duration_seconds_count 2693
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
         assert_eq!(
@@ -562,7 +562,7 @@ rpc_duration_seconds_count 2693
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
     }
@@ -640,7 +640,7 @@ rpc_duration_seconds_count{service="backup",code="400"} 2693 1395066363000
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
         assert_eq!(
@@ -676,7 +676,7 @@ rpc_duration_seconds_count{service="backup",code="400"} 2693 1395066363000
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
     }
