@@ -1,5 +1,10 @@
 Revision history for prometheus-parse
 
+- v0.2.4
+    - Make everything Cloneable (thanks @banool!)
+    - Remove unneeded features to minimise dependencies (thanks @jbg!)
+    - Replace lazy_static with once_cell (thanks @jbg!)
+
 - v0.2.0
     - Bump dependency versions
     - Release to crates.io
