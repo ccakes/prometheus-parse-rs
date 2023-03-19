@@ -1,20 +1,18 @@
 use chrono::{DateTime, TimeZone, Utc};
 use itertools::Itertools;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::ops::Deref;
 
-lazy_static! {
-    static ref HELP_RE: Regex = Regex::new(r"^#\s+HELP\s+(\w+)\s+(.+)$").unwrap();
-    static ref TYPE_RE: Regex = Regex::new(r"^#\s+TYPE\s+(\w+)\s+(\w+)").unwrap();
-    static ref SAMPLE_RE: Regex = Regex::new(
-        r"^(?P<name>\w+)(\{(?P<labels>[^}]+)\})?\s+(?P<value>\S+)(\s+(?P<timestamp>\S+))?"
-    )
-    .unwrap();
-}
+static HELP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^#\s+HELP\s+(\w+)\s+(.+)$").unwrap());
+static TYPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^#\s+TYPE\s+(\w+)\s+(\w+)").unwrap());
+static SAMPLE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(?P<name>\w+)(\{(?P<labels>[^}]+)\})?\s+(?P<value>\S+)(\s+(?P<timestamp>\S+))?")
+        .unwrap()
+});
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum LineInfo<'a> {
@@ -64,39 +62,33 @@ impl<'a> LineInfo<'a> {
         if line.is_empty() {
             return LineInfo::Empty;
         }
-        match HELP_RE.captures(line) {
-            Some(ref caps) => {
-                return match (caps.get(1), caps.get(2)) {
-                    (Some(ref metric_name), Some(ref doc)) => LineInfo::Doc {
-                        metric_name: metric_name.as_str(),
-                        doc: doc.as_str(),
-                    },
-                    _ => LineInfo::Ignored,
-                }
-            }
-            None => {}
+        if let Some(ref caps) = HELP_RE.captures(line) {
+            return match (caps.get(1), caps.get(2)) {
+                (Some(ref metric_name), Some(ref doc)) => LineInfo::Doc {
+                    metric_name: metric_name.as_str(),
+                    doc: doc.as_str(),
+                },
+                _ => LineInfo::Ignored,
+            };
         }
-        match TYPE_RE.captures(line) {
-            Some(ref caps) => {
-                return match (caps.get(1), caps.get(2)) {
-                    (Some(ref metric_name), Some(ref sample_type)) => {
-                        let sample_type = SampleType::parse(sample_type.as_str());
-                        LineInfo::Type {
-                            metric_name: match sample_type {
-                                SampleType::Histogram => format!("{}_bucket", metric_name.as_str()),
-                                _ => metric_name.as_str().to_string(),
-                            },
-                            metric_alias: match sample_type {
-                                SampleType::Histogram => Some(metric_name.as_str().to_string()),
-                                _ => None,
-                            },
-                            sample_type,
-                        }
+        if let Some(ref caps) = TYPE_RE.captures(line) {
+            return match (caps.get(1), caps.get(2)) {
+                (Some(ref metric_name), Some(ref sample_type)) => {
+                    let sample_type = SampleType::parse(sample_type.as_str());
+                    LineInfo::Type {
+                        metric_name: match sample_type {
+                            SampleType::Histogram => format!("{}_bucket", metric_name.as_str()),
+                            _ => metric_name.as_str().to_string(),
+                        },
+                        metric_alias: match sample_type {
+                            SampleType::Histogram => Some(metric_name.as_str().to_string()),
+                            _ => None,
+                        },
+                        sample_type,
                     }
-                    _ => LineInfo::Ignored,
                 }
-            }
-            None => {}
+                _ => LineInfo::Ignored,
+            };
         }
         match SAMPLE_RE.captures(line) {
             Some(ref caps) => {
@@ -113,7 +105,7 @@ impl<'a> LineInfo<'a> {
                         timestamp: timestamp.map(|c| c.as_str()),
                     },
                     _ => LineInfo::Ignored,
-                }
+                };
             }
             None => LineInfo::Ignored,
         }
@@ -170,6 +162,7 @@ impl Labels {
     fn new() -> Labels {
         Labels(HashMap::new())
     }
+
     fn parse(s: &str) -> Labels {
         let mut l = HashMap::new();
         for kv in s.split(',') {
@@ -184,6 +177,7 @@ impl Labels {
         }
         Labels(l)
     }
+
     pub fn get(&self, name: &str) -> Option<&str> {
         self.0.get(name).map(|x| x.as_str())
     }
@@ -229,6 +223,7 @@ impl Value {
             hs.push(h)
         }
     }
+
     fn push_summary(&mut self, s: SummaryCount) {
         if let &mut Value::Summary(ref mut ss) = self {
             ss.push(s)
@@ -253,6 +248,7 @@ impl Scrape {
     pub fn parse(lines: impl Iterator<Item = io::Result<String>>) -> io::Result<Scrape> {
         Scrape::parse_at(lines, Utc::now())
     }
+
     pub fn parse_at(
         lines: impl Iterator<Item = io::Result<String>>,
         sample_time: DateTime<Utc>,
@@ -298,9 +294,11 @@ impl Scrape {
                         continue;
                     };
                     // Parse timestamp or use given sample time
-                    let timestamp = if let Some(Ok(ts_millis)) = timestamp.map(|x| x.parse::<i64>())
+                    let timestamp = if let Some(time) = timestamp
+                        .and_then(|x| x.parse::<i64>().ok())
+                        .and_then(|ts_millis| Utc.timestamp_millis_opt(ts_millis).single())
                     {
-                        Utc.timestamp_millis(ts_millis)
+                        time
                     } else {
                         sample_time
                     };
@@ -362,8 +360,9 @@ impl Scrape {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::BufRead;
+
+    use super::*;
 
     #[test]
     fn test_lineinfo_parse() {
@@ -549,7 +548,7 @@ rpc_duration_seconds_count 2693
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
         assert_eq!(
@@ -564,7 +563,7 @@ rpc_duration_seconds_count 2693
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
     }
@@ -642,7 +641,7 @@ rpc_duration_seconds_count{service="backup",code="400"} 2693 1395066363000
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
         assert_eq!(
@@ -678,7 +677,7 @@ rpc_duration_seconds_count{service="backup",code="400"} 2693 1395066363000
                         .map(pair_to_string)
                         .collect()
                 ),
-                timestamp: Utc.timestamp_millis(1395066363000),
+                timestamp: Utc.timestamp_millis_opt(1395066363000).unwrap(),
             }
         );
     }
