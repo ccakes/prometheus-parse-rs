@@ -200,7 +200,7 @@ impl core::fmt::Display for Labels {
                 self.iter()
                     .collect::<BTreeMap<_, _>>()
                     .into_iter()
-                    .map(|(k, v)| format!(r#"{}="{}"#, k, v)),
+                    .map(|(k, v)| format!(r#"{}="{}""#, k, v)),
                 ",".to_string()
             )
             .collect::<String>()
