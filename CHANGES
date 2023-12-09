@@ -1,5 +1,9 @@
 Revision history for prometheus-parse
 
+- v0.2.5
+    - Fix labels display (thanks @rukai!)
+    - Update itertools dependency (thanks @rukai!)
+
 - v0.2.4
     - Make everything Cloneable (thanks @banool!)
     - Remove unneeded features to minimise dependencies (thanks @jbg!)
